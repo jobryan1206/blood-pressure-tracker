@@ -8,7 +8,7 @@ from datetime import datetime
 # App config
 # =========================
 st.set_page_config(page_title="Blood Pressure Logger", page_icon="💕", layout="wide")
-st.title("💕 V's Blood Pressure")
+st.title("💕Blood Pressure")
 
 CSV_PATH = "bp_data.csv"
 DEFAULT_SHEET_NAME = "bp_data"
