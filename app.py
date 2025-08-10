@@ -287,37 +287,55 @@ with st.form("bp_form", clear_on_submit=True):
 import numpy as np
 
 # =========================
-# Table (modified version)
+# Table (with delta color coding)
 # =========================
+import matplotlib.colors as mcolors
+
 st.subheader("Recent readings")
 if df.empty:
     st.info("No data yet. Add your first reading above.")
 else:
     show = df.sort_values("timestamp", ascending=False).copy()
 
-    # Pretty timestamp: "Sun 8/10/25"  (month no leading zero; 2-digit year)
+    # Pretty timestamp
     show["When"] = show["timestamp"].apply(
         lambda x: f"{x.strftime('%a')} {x.month}/{x.day:02d}/{x.year%100:02d}"
     )
 
-    # Compact BP
-    show["BP"] = (
-        show["systolic"].astype(int).astype(str)
-        + "/"
-        + show["diastolic"].astype(int).astype(str)
-    )
+    # BP string
+    show["BP"] = show["systolic"].astype(int).astype(str) + "/" + show["diastolic"].astype(int).astype(str)
 
-    # New delta columns
+    # Delta columns
     show["Systolic △"] = show["systolic"] - 120
     show["Diastolic △"] = show["diastolic"] - 80
 
     # Notes
     show["Notes"] = show["notes"].fillna("")
 
-    # Choose columns & hide the index
+    # Pick columns
     show = show[["When", "BP", "Systolic △", "Diastolic △", "Notes"]]
-    st.dataframe(show.head(25), use_container_width=True, hide_index=True)
 
+    # ---- Custom gradient function ----
+    def delta_gradient(val):
+        """Return CSS color style for delta values."""
+        max_abs = 30
+        clipped = max(min(val, max_abs), -max_abs)  # clamp between -30 and 30
+        if clipped > 0:
+            # Red gradient (white → red)
+            norm = clipped / max_abs
+            color = mcolors.to_hex((1, 1 - 0.5*norm, 1 - 0.5*norm))  # soft red
+        elif clipped < 0:
+            # Blue gradient (white → blue)
+            norm = abs(clipped) / max_abs
+            color = mcolors.to_hex((1 - 0.5*norm, 1 - 0.5*norm, 1))  # soft blue
+        else:
+            color = "#ffffff"
+        return f"background-color: {color}"
+
+    # Apply styles only to delta columns
+    styled = show.style.applymap(delta_gradient, subset=["Systolic △", "Diastolic △"])
+
+    st.dataframe(styled, use_container_width=True, hide_index=True)
 
   
 import matplotlib.dates as mdates
