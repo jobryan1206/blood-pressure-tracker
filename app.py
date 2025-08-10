@@ -287,7 +287,7 @@ with st.form("bp_form", clear_on_submit=True):
 import numpy as np
 
 # =========================
-# Table (fun version)
+# Table (modified version)
 # =========================
 st.subheader("Recent readings")
 if df.empty:
@@ -300,20 +300,24 @@ else:
         lambda x: f"{x.strftime('%a')} {x.month}/{x.day:02d}/{x.year%100:02d}"
     )
 
-    # Compact BP and friendlier status
-    status_emoji = {
-        "Normal": "🟢",
-        "Elevated": "🟡",
-        "Hypertension Stage 1": "🟠",
-        "Hypertension Stage 2": "🔴",
-    }
-    show["BP"] = show["systolic"].astype(int).astype(str) + "/" + show["diastolic"].astype(int).astype(str)
-    show["Status"] = show["category"].map(lambda c: f"{status_emoji.get(c, '⚪')} {c}")
+    # Compact BP
+    show["BP"] = (
+        show["systolic"].astype(int).astype(str)
+        + "/"
+        + show["diastolic"].astype(int).astype(str)
+    )
+
+    # New delta columns
+    show["Systolic △"] = show["systolic"] - 120
+    show["Diastolic △"] = show["diastolic"] - 80
+
+    # Notes
     show["Notes"] = show["notes"].fillna("")
 
     # Choose columns & hide the index
-    show = show[["When", "BP", "Status", "Notes"]]
+    show = show[["When", "BP", "Systolic △", "Diastolic △", "Notes"]]
     st.dataframe(show.head(25), use_container_width=True, hide_index=True)
+
 
   
 import matplotlib.dates as mdates
