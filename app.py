@@ -257,4 +257,30 @@ else:
 # ---------- Charts ----------
 if not df.empty:
     st.subheader("Trends")
-    df_plot = df_
+
+    if "timestamp" not in df.columns:
+        st.warning("No 'timestamp' column found yet.")
+    else:
+        df_plot = df.copy().sort_values("timestamp")
+        df_plot.set_index("timestamp", inplace=True)
+
+        # 7-day rolling averages
+        for col in ["systolic", "diastolic"]:
+            if col in df_plot.columns:
+                df_plot[f"{col}_7d_avg"] = df_plot[col].rolling("7D").mean()
+
+        st.markdown("**Systolic & Diastolic over time** (with 7-day rolling average)")
+        fig1, ax1 = plt.subplots()
+        if "systolic" in df_plot.columns: ax1.plot(df_plot.index, df_plot["systolic"], label="Systolic")
+        if "diastolic" in df_plot.columns: ax1.plot(df_plot.index, df_plot["diastolic"], label="Diastolic")
+        if "systolic_7d_avg" in df_plot.columns: ax1.plot(df_plot.index, df_plot["systolic_7d_avg"], linestyle="--", label="Systolic (7d avg)")
+        if "diastolic_7d_avg" in df_plot.columns: ax1.plot(df_plot.index, df_plot["diastolic_7d_avg"], linestyle="--", label="Diastolic (7d avg)")
+        ax1.set_xlabel("Date"); ax1.set_ylabel("mmHg"); ax1.legend()
+        st.pyplot(fig1)
+
+        st.markdown("**Systolic vs Diastolic** (each point = a reading)")
+        fig2, ax2 = plt.subplots()
+        ax2.scatter(df["systolic"], df["diastolic"])
+        ax2.set_xlabel("Systolic (mmHg)"); ax2.set_ylabel("Diastolic (mmHg)")
+        st.pyplot(fig2)
+
