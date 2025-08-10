@@ -285,15 +285,33 @@ with st.form("bp_form", clear_on_submit=True):
             st.success(f"Reading saved to {current_target}.")
 
 # =========================
-# Table
+# Table (fun version)
 # =========================
 st.subheader("Recent readings")
 if df.empty:
     st.info("No data yet. Add your first reading above.")
 else:
-    df_view = df.sort_values("timestamp", ascending=False).copy()
-    df_view["timestamp"] = df_view["timestamp"].dt.strftime("%Y-%m-%d %H:%M")
-    st.dataframe(df_view.head(25), use_container_width=True)
+    show = df.sort_values("timestamp", ascending=False).copy()
+
+    # Pretty timestamp: "Sun 8/10/25"  (month no leading zero; 2-digit year)
+    show["When"] = show["timestamp"].apply(
+        lambda x: f"{x.strftime('%a')} {x.month}/{x.day:02d}/{x.year%100:02d}"
+    )
+
+    # Compact BP and friendlier status
+    status_emoji = {
+        "Normal": "🟢",
+        "Elevated": "🟡",
+        "Hypertension Stage 1": "🟠",
+        "Hypertension Stage 2": "🔴",
+    }
+    show["BP"] = show["systolic"].astype(int).astype(str) + "/" + show["diastolic"].astype(int).astype(str)
+    show["Status"] = show["category"].map(lambda c: f"{status_emoji.get(c, '⚪')} {c}")
+    show["Notes"] = show["notes"].fillna("")
+
+    # Choose columns & hide the index
+    show = show[["When", "BP", "Status", "Notes"]]
+    st.dataframe(show.head(25), use_container_width=True, hide_index=True)
 
 # =========================
 # Charts
