@@ -25,6 +25,20 @@ except Exception:
     gspread = None
     Credentials = None
 
+MINT_GREEN = "#A5F2B1"  # from your image
+
+st.markdown(
+    f"""
+    <style>
+    .stApp {{
+        background-color: {MINT_GREEN};
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+
 # =========================
 # Secrets + Sheets helpers
 # =========================
