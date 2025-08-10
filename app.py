@@ -273,16 +273,20 @@ with st.form("bp_form", clear_on_submit=True):
     else:
         ts = datetime.now()
 
-    submitted = st.form_submit_button("Add reading", type="primary")
-    if submitted:
-        # Validate inputs
-        sys_val, err1 = parse_int("Systolic", sys_raw, 50, 260)
-        dia_val, err2 = parse_int("Diastolic", dia_raw, 30, 180)
-        if err1: st.error(err1)
-        if err2: st.error(err2)
-        if not (err1 or err2):
-            df, current_target = add_entry(sys_val, dia_val, notes, ts, "gsheets")
-            st.success(f"Reading saved to {current_target}.")
+submitted = st.form_submit_button("Add reading", type="primary")
+if submitted:
+    # Validate inputs
+    sys_val, err1 = parse_int("Systolic", sys_raw, 50, 260)
+    dia_val, err2 = parse_int("Diastolic", dia_raw, 30, 180)
+    if err1: st.error(err1)
+    if err2: st.error(err2)
+    if not (err1 or err2):
+        df, current_target = add_entry(sys_val, dia_val, notes, ts, "gsheets")
+        # Clear, obvious confirmation:
+        st.toast(f"Reading saved to {current_target}.", icon="✅")
+        st.balloons()
+        st.success("Reading saved.")
+
 
 import numpy as np
 
