@@ -4,15 +4,20 @@ import matplotlib.pyplot as plt
 from io import BytesIO
 from datetime import datetime
 
-# ---------- Config ----------
+# =========================
+# App config
+# =========================
 st.set_page_config(page_title="Blood Pressure Logger", page_icon="🩺", layout="wide")
 st.title("🩺 Blood Pressure Logger")
-st.caption("Log BP readings, add notes, and visualize trends. Writes to Google Sheets if configured; otherwise uses a local CSV.")
+st.caption("Log BP readings with notes and visualize trends. Writes to Google Sheets if configured; otherwise uses a local CSV.")
 
 CSV_PATH = "bp_data.csv"
 DEFAULT_SHEET_NAME = "bp_data"
+DATA_COLUMNS = ["timestamp", "systolic", "diastolic", "notes", "category", "map", "pulse_pressure"]
 
-# ---------- Optional Google Sheets deps ----------
+# =========================
+# Optional Google Sheets deps
+# =========================
 try:
     import gspread
     from google.oauth2.service_account import Credentials
@@ -21,9 +26,11 @@ except Exception:
     gspread = None
     Credentials = None
 
-# ---------- Secrets helpers ----------
+# =========================
+# Secrets + Sheets helpers
+# =========================
 def _get_sa_secrets():
-    # allow either [gcp_service_account] (BP app) or [google] (other apps)
+    # Allow either [gcp_service_account] (this app) or [google] (some older apps)
     if "gcp_service_account" in st.secrets:
         return dict(st.secrets["gcp_service_account"])
     if "google" in st.secrets:
@@ -64,16 +71,19 @@ def get_sheet_handles():
                 sh = client.open_by_key(sheet_ref)
         else:
             sh = client.create("Blood Pressure Logger Data")
+
         try:
             ws = sh.worksheet(ws_name)
         except gspread.WorksheetNotFound:
             ws = sh.add_worksheet(title=ws_name, rows=1000, cols=20)
-            ws.update([["timestamp","systolic","diastolic","pulse","notes","category","map","pulse_pressure"]])
+            ws.update([DATA_COLUMNS])
         return sh, ws, None
     except Exception as e:
         return None, None, f"Opening spreadsheet failed: {e}"
 
-# ---------- Domain ----------
+# =========================
+# Domain helpers
+# =========================
 def categorize_bp(sys, dia):
     if sys < 120 and dia < 80:
         return "Normal"
@@ -85,22 +95,37 @@ def categorize_bp(sys, dia):
         return "Hypertension Stage 2"
     return "Uncategorized"
 
-# ---------- IO: CSV ----------
+def parse_int(field_label, raw, min_v, max_v):
+    """Return (value:int|None, error_msg:str|None)."""
+    if raw is None or str(raw).strip() == "":
+        return None, f"{field_label} is required."
+    try:
+        val = int(str(raw).strip())
+    except ValueError:
+        return None, f"{field_label} must be a whole number."
+    if not (min_v <= val <= max_v):
+        return None, f"{field_label} must be between {min_v} and {max_v}."
+    return val, None
+
+# =========================
+# IO: Local CSV
+# =========================
 def load_data_local():
     try:
         df = pd.read_csv(CSV_PATH, parse_dates=["timestamp"])
-        for c in ["systolic","diastolic","pulse","map","pulse_pressure"]:
+        for c in ["systolic", "diastolic", "map", "pulse_pressure"]:
             if c in df.columns:
                 df[c] = pd.to_numeric(df[c], errors="coerce")
         return df.dropna(subset=["timestamp"])
     except FileNotFoundError:
-        cols = ["timestamp","systolic","diastolic","pulse","notes","category","map","pulse_pressure"]
-        return pd.DataFrame(columns=cols)
+        return pd.DataFrame(columns=DATA_COLUMNS)
 
-def save_data_local(df):
+def save_data_local(df: pd.DataFrame):
     df.to_csv(CSV_PATH, index=False)
 
-# ---------- IO: Google Sheets ----------
+# =========================
+# IO: Google Sheets
+# =========================
 def load_data_gsheets():
     sh, ws, err = get_sheet_handles()
     if err or not ws:
@@ -108,35 +133,40 @@ def load_data_gsheets():
     try:
         df = get_as_dataframe(ws, evaluate_formulas=True, header=0, dtype=None, nrows=None).dropna(how="all")
         if df.empty:
-            df = pd.DataFrame(columns=["timestamp","systolic","diastolic","pulse","notes","category","map","pulse_pressure"])
+            df = pd.DataFrame(columns=DATA_COLUMNS)
         if "timestamp" in df.columns:
             df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
-        for c in ["systolic","diastolic","pulse","map","pulse_pressure"]:
+        for c in ["systolic", "diastolic", "map", "pulse_pressure"]:
             if c in df.columns:
                 df[c] = pd.to_numeric(df[c], errors="coerce")
+        # Ensure expected columns exist
+        for c in DATA_COLUMNS:
+            if c not in df.columns:
+                df[c] = None
         return df.dropna(subset=["timestamp"]), None
     except Exception as e:
         return None, f"Read from Google Sheets failed: {e}"
 
-def save_data_gsheets(df):
+def save_data_gsheets(df: pd.DataFrame):
     sh, ws, err = get_sheet_handles()
     if err or not ws:
         return err or "No worksheet"
     try:
-        cols = ["timestamp","systolic","diastolic","pulse","notes","category","map","pulse_pressure"]
-        for c in cols:
-            if c not in df.columns:
-                df[c] = None
-        df = df[cols]
-        if pd.api.types.is_datetime64_any_dtype(df["timestamp"]):
-            df["timestamp"] = df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
+        df2 = df.copy()
+        # Ensure column order & presence
+        for c in DATA_COLUMNS:
+            if c not in df2.columns:
+                df2[c] = None
+        df2 = df2[DATA_COLUMNS]
+        if pd.api.types.is_datetime64_any_dtype(df2["timestamp"]):
+            df2["timestamp"] = df2["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
         ws.clear()
-        set_with_dataframe(ws, df, include_index=False, include_column_header=True, resize=True)
+        set_with_dataframe(ws, df2, include_index=False, include_column_header=True, resize=True)
         return None
     except Exception as e:
         return f"Write to Google Sheets failed: {e}"
 
-# ---------- IO: router ----------
+# Router
 def load_data():
     if _gs_enabled():
         df, err = load_data_gsheets()
@@ -158,24 +188,21 @@ def save_data(df, target_hint):
     save_data_local(df)
     return "local"
 
-def add_entry(sys, dia, notes, ts):
-    df = load_data()
-    category = categorize_bp(sys, dia)
-    pulse_pressure = sys - dia
-    mean_arterial_pressure = round(dia + (pulse_pressure/3), 1)
+def add_entry(sys, dia, notes, ts, target_hint):
+    df, _ = load_data()
+    pp = sys - dia
     row = {
         "timestamp": pd.to_datetime(ts),
         "systolic": int(sys),
         "diastolic": int(dia),
         "notes": notes or "",
-        "category": category,
-        "map": mean_arterial_pressure,
-        "pulse_pressure": pulse_pressure,
+        "category": categorize_bp(sys, dia),
+        "map": round(dia + pp/3, 1),
+        "pulse_pressure": pp,
     }
-    df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
-    df = df.sort_values("timestamp")
-    save_data(df)
-    return df
+    df = pd.concat([df, pd.DataFrame([row])], ignore_index=True).sort_values("timestamp")
+    used = save_data(df, target_hint)
+    return df, used
 
 def df_download_bytes(df):
     out = BytesIO()
@@ -183,7 +210,9 @@ def df_download_bytes(df):
     out.seek(0)
     return out
 
-# ---------- Sidebar ----------
+# =========================
+# Sidebar
+# =========================
 with st.sidebar:
     st.header("Data")
     io_mode = "gsheets" if _gs_enabled() else "local"
@@ -212,31 +241,34 @@ with st.sidebar:
                 st.error(f"Import failed: {e}")
 
     if st.button("🗑️ Clear ALL data"):
-        empty = pd.DataFrame(columns=["timestamp","systolic","diastolic","pulse","notes","category","map","pulse_pressure"])
+        empty = pd.DataFrame(columns=DATA_COLUMNS)
         used = save_data(empty, io_mode)
         st.warning(f"All data cleared. Saved to {used}.")
 
 st.divider()
 
-# ---------- Input form ----------
-st.subheader("Add a reading")
+# =========================
+# Form (blank inputs, no pulse)
+# =========================
+# Always have a dataframe to work with downstream
+df, current_target = load_data()
 
+st.subheader("Add a reading")
 with st.form("bp_form", clear_on_submit=True):
     col1, col2, col3 = st.columns([1, 1, 2])
     with col1:
-        systolic = st.number_input("Systolic (mmHg)", min_value=50, max_value=260, step=1)
+        sys_raw = st.text_input("Systolic (mmHg)", value="", placeholder="e.g., 120")
     with col2:
-        diastolic = st.number_input("Diastolic (mmHg)", min_value=30, max_value=180, step=1)
+        dia_raw = st.text_input("Diastolic (mmHg)", value="", placeholder="e.g., 75")
     with col3:
         notes = st.text_input("Notes (optional)", placeholder="Medication, posture, time since coffee, etc.")
 
-    # Optional manual timestamp
     manual_ts = st.checkbox("Set custom date & time")
     if manual_ts:
-        col_dt1, col_dt2 = st.columns(2)
-        with col_dt1:
+        c1, c2 = st.columns(2)
+        with c1:
             date = st.date_input("Date", value=datetime.now().date())
-        with col_dt2:
+        with c2:
             time = st.time_input("Time", value=datetime.now().time().replace(microsecond=0))
         ts = datetime.combine(date, time)
     else:
@@ -244,13 +276,18 @@ with st.form("bp_form", clear_on_submit=True):
 
     submitted = st.form_submit_button("Add reading", type="primary")
     if submitted:
-        df = add_entry(systolic, diastolic, notes, ts)
-        st.success("Reading saved.")
-    else:
-        df = load_data()
+        # Validate inputs
+        sys_val, err1 = parse_int("Systolic", sys_raw, 50, 260)
+        dia_val, err2 = parse_int("Diastolic", dia_raw, 30, 180)
+        if err1: st.error(err1)
+        if err2: st.error(err2)
+        if not (err1 or err2):
+            df, current_target = add_entry(sys_val, dia_val, notes, ts, "gsheets")
+            st.success(f"Reading saved to {current_target}.")
 
-
-# ---------- Table ----------
+# =========================
+# Table
+# =========================
 st.subheader("Recent readings")
 if df.empty:
     st.info("No data yet. Add your first reading above.")
@@ -259,13 +296,13 @@ else:
     df_view["timestamp"] = df_view["timestamp"].dt.strftime("%Y-%m-%d %H:%M")
     st.dataframe(df_view.head(25), use_container_width=True)
 
-# ---------- Charts ----------
+# =========================
+# Charts
+# =========================
 if not df.empty:
     st.subheader("Trends")
 
-    if "timestamp" not in df.columns:
-        st.warning("No 'timestamp' column found yet.")
-    else:
+    if "timestamp" in df.columns:
         df_plot = df.copy().sort_values("timestamp")
         df_plot.set_index("timestamp", inplace=True)
 
@@ -276,16 +313,40 @@ if not df.empty:
 
         st.markdown("**Systolic & Diastolic over time** (with 7-day rolling average)")
         fig1, ax1 = plt.subplots()
-        if "systolic" in df_plot.columns: ax1.plot(df_plot.index, df_plot["systolic"], label="Systolic")
-        if "diastolic" in df_plot.columns: ax1.plot(df_plot.index, df_plot["diastolic"], label="Diastolic")
-        if "systolic_7d_avg" in df_plot.columns: ax1.plot(df_plot.index, df_plot["systolic_7d_avg"], linestyle="--", label="Systolic (7d avg)")
-        if "diastolic_7d_avg" in df_plot.columns: ax1.plot(df_plot.index, df_plot["diastolic_7d_avg"], linestyle="--", label="Diastolic (7d avg)")
+        if "systolic" in df_plot.columns:
+            ax1.plot(df_plot.index, df_plot["systolic"], label="Systolic")
+        if "diastolic" in df_plot.columns:
+            ax1.plot(df_plot.index, df_plot["diastolic"], label="Diastolic")
+        if "systolic_7d_avg" in df_plot.columns:
+            ax1.plot(df_plot.index, df_plot["systolic_7d_avg"], linestyle="--", label="Systolic (7d avg)")
+        if "diastolic_7d_avg" in df_plot.columns:
+            ax1.plot(df_plot.index, df_plot["diastolic_7d_avg"], linestyle="--", label="Diastolic (7d avg)")
         ax1.set_xlabel("Date"); ax1.set_ylabel("mmHg"); ax1.legend()
         st.pyplot(fig1)
 
         st.markdown("**Systolic vs Diastolic** (each point = a reading)")
         fig2, ax2 = plt.subplots()
-        ax2.scatter(df["systolic"], df["diastolic"])
+        if "systolic" in df.columns and "diastolic" in df.columns:
+            ax2.scatter(df["systolic"], df["diastolic"])
         ax2.set_xlabel("Systolic (mmHg)"); ax2.set_ylabel("Diastolic (mmHg)")
         st.pyplot(fig2)
 
+    st.subheader("Weekly summary")
+    df_week = df.copy()
+    if "timestamp" in df_week.columns:
+        df_week["week"] = df_week["timestamp"].dt.to_period("W").apply(lambda p: p.start_time.date())
+        summary = df_week.groupby("week")[["systolic","diastolic","map","pulse_pressure"]].agg(["count","mean","min","max"])
+        summary.columns = ['_'.join(c).strip() for c in summary.columns.values]
+        st.dataframe(summary, use_container_width=True)
+
+# =========================
+# Info
+# =========================
+with st.expander("How are categories defined?"):
+    st.markdown("""
+- **Normal:** Systolic < 120 and Diastolic < 80  
+- **Elevated:** Systolic 120-129 and Diastolic < 80  
+- **Hypertension Stage 1:** Systolic 130-139 or Diastolic 80-89  
+- **Hypertension Stage 2:** Systolic >= 140 or Diastolic >= 90
+""")
+st.caption("Tip: Take two readings each time and log the average. Measure at consistent times daily, seated, with arm at heart level.")
