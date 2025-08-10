@@ -252,6 +252,9 @@ st.divider()
 # Always have a dataframe to work with downstream
 df, current_target = load_data()
 
+# Always have data available downstream
+df, current_target = load_data()
+
 st.subheader("Add a reading")
 with st.form("bp_form", clear_on_submit=True):
     col1, col2, col3 = st.columns([1, 1, 2])
@@ -273,19 +276,24 @@ with st.form("bp_form", clear_on_submit=True):
     else:
         ts = datetime.now()
 
-submitted = st.form_submit_button("Add reading", type="primary")
-if submitted:
-    # Validate inputs
-    sys_val, err1 = parse_int("Systolic", sys_raw, 50, 260)
-    dia_val, err2 = parse_int("Diastolic", dia_raw, 30, 180)
-    if err1: st.error(err1)
-    if err2: st.error(err2)
-    if not (err1 or err2):
-        df, current_target = add_entry(sys_val, dia_val, notes, ts, "gsheets")
-        # Clear, obvious confirmation:
-        st.toast(f"Reading saved to {current_target}.", icon="✅")
-        st.balloons()
-        st.success("Reading saved.")
+    # IMPORTANT: keep this INSIDE the form (indented)
+    submitted = st.form_submit_button("Add reading", type="primary", use_container_width=True)
+
+    if submitted:
+        # Validate inputs
+        sys_val, err1 = parse_int("Systolic", sys_raw, 50, 260)
+        dia_val, err2 = parse_int("Diastolic", dia_raw, 30, 180)
+        if err1: st.error(err1)
+        if err2: st.error(err2)
+        if not (err1 or err2):
+            df, current_target = add_entry(sys_val, dia_val, notes, ts, "gsheets")
+            # Clear, obvious confirmation
+            try:
+                st.toast(f"Reading saved to {current_target}.", icon="✅")
+            except Exception:
+                pass  # toast not available on very old Streamlit
+            st.balloons()
+            st.success("Reading saved.")
 
 
 import numpy as np
