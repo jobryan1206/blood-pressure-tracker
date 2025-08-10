@@ -13,7 +13,7 @@ st.caption("Log BP readings with notes and visualize trends. Writes to Google Sh
 
 CSV_PATH = "bp_data.csv"
 DEFAULT_SHEET_NAME = "bp_data"
-DATA_COLUMNS = ["timestamp", "systolic", "diastolic", "notes", "category", "map", "pulse_pressure"]
+DATA_COLUMNS = ["timestamp", "systolic", "diastolic", "notes", "category", "map"]
 
 # =========================
 # Optional Google Sheets deps
