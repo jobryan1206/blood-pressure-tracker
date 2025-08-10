@@ -158,22 +158,24 @@ def save_data(df, target_hint):
     save_data_local(df)
     return "local"
 
-def add_entry(sys, dia, pulse, notes, ts, target_hint):
-    df, _ = load_data()
-    pp = sys - dia
+def add_entry(sys, dia, notes, ts):
+    df = load_data()
+    category = categorize_bp(sys, dia)
+    pulse_pressure = sys - dia
+    mean_arterial_pressure = round(dia + (pulse_pressure/3), 1)
     row = {
         "timestamp": pd.to_datetime(ts),
         "systolic": int(sys),
         "diastolic": int(dia),
-        "pulse": int(pulse) if pulse is not None else None,
         "notes": notes or "",
-        "category": categorize_bp(sys, dia),
-        "map": round(dia + pp/3, 1),
-        "pulse_pressure": pp,
+        "category": category,
+        "map": mean_arterial_pressure,
+        "pulse_pressure": pulse_pressure,
     }
-    df = pd.concat([df, pd.DataFrame([row])], ignore_index=True).sort_values("timestamp")
-    used = save_data(df, target_hint)
-    return df, used
+    df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+    df = df.sort_values("timestamp")
+    save_data(df)
+    return df
 
 def df_download_bytes(df):
     out = BytesIO()
@@ -216,34 +218,37 @@ with st.sidebar:
 
 st.divider()
 
-# ---------- Form ----------
+# ---------- Input form ----------
 st.subheader("Add a reading")
+
 with st.form("bp_form", clear_on_submit=True):
-    col1, col2, col3, col4 = st.columns([1,1,1,2])
+    col1, col2, col3 = st.columns([1, 1, 2])
     with col1:
-        systolic = st.number_input("Systolic (mmHg)", min_value=50, max_value=260, value=120, step=1)
+        systolic = st.number_input("Systolic (mmHg)", min_value=50, max_value=260, step=1)
     with col2:
-        diastolic = st.number_input("Diastolic (mmHg)", min_value=30, max_value=180, value=75, step=1)
+        diastolic = st.number_input("Diastolic (mmHg)", min_value=30, max_value=180, step=1)
     with col3:
-        pulse = st.number_input("Pulse (bpm)", min_value=20, max_value=220, value=70, step=1)
-    with col4:
         notes = st.text_input("Notes (optional)", placeholder="Medication, posture, time since coffee, etc.")
+
+    # Optional manual timestamp
     manual_ts = st.checkbox("Set custom date & time")
     if manual_ts:
-        c1, c2 = st.columns(2)
-        with c1:
+        col_dt1, col_dt2 = st.columns(2)
+        with col_dt1:
             date = st.date_input("Date", value=datetime.now().date())
-        with c2:
+        with col_dt2:
             time = st.time_input("Time", value=datetime.now().time().replace(microsecond=0))
         ts = datetime.combine(date, time)
     else:
         ts = datetime.now()
+
     submitted = st.form_submit_button("Add reading", type="primary")
     if submitted:
-        df, target_used = add_entry(systolic, diastolic, pulse, notes, ts, "gsheets")
-        st.success(f"Reading saved to {target_used}.")
+        df = add_entry(systolic, diastolic, notes, ts)
+        st.success("Reading saved.")
     else:
-        df, _ = load_data()
+        df = load_data()
+
 
 # ---------- Table ----------
 st.subheader("Recent readings")
