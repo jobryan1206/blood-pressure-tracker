@@ -7,7 +7,7 @@ from datetime import datetime
 # =========================
 # App config
 # =========================
-st.set_page_config(page_title="Blood Pressure Logger", page_icon="🩺", layout="wide")
+st.set_page_config(page_title="Blood Pressure Logger", page_icon="💕", layout="wide")
 st.title("🩺 Blood Pressure Logger")
 st.caption("Log BP readings with notes and visualize trends. Writes to Google Sheets if configured; otherwise uses a local CSV.")
 
