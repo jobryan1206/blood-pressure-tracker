@@ -246,12 +246,6 @@ with st.sidebar:
 
 st.divider()
 
-# =========================
-# Form (blank inputs, no pulse)
-# =========================
-# Always have a dataframe to work with downstream
-df, current_target = load_data()
-
 # Always have data available downstream
 df, current_target = load_data()
 
@@ -276,7 +270,6 @@ with st.form("bp_form", clear_on_submit=True):
     else:
         ts = datetime.now()
 
-    # IMPORTANT: keep this INSIDE the form (indented)
     submitted = st.form_submit_button("Add reading", type="primary", use_container_width=True)
 
     if submitted:
@@ -287,13 +280,8 @@ with st.form("bp_form", clear_on_submit=True):
         if err2: st.error(err2)
         if not (err1 or err2):
             df, current_target = add_entry(sys_val, dia_val, notes, ts, "gsheets")
-            # Clear, obvious confirmation
-            try:
-                st.toast(f"Reading saved to {current_target}.", icon="✅")
-            except Exception:
-                pass  # toast not available on very old Streamlit
-            st.balloons()
-            st.success("Reading saved.")
+            st.toast("Entry Saved. Thanks!", icon="✅")
+
 
 
 import numpy as np
@@ -379,35 +367,6 @@ if not df.empty:
     ax2.yaxis.set_major_locator(plt.MaxNLocator(6))
 
     st.pyplot(fig2)
-
-   # ---- Weekly summary ----
-st.subheader("Weekly summary")
-
-if df.empty or "timestamp" not in df.columns:
-    st.info("No data to summarize yet.")
-else:
-    df_week = df.copy()
-
-    # Backfill derived columns if missing
-    if {"systolic", "diastolic"}.issubset(df_week.columns):
-        if "pulse_pressure" not in df_week.columns:
-            df_week["pulse_pressure"] = df_week["systolic"] - df_week["diastolic"]
-        if "map" not in df_week.columns:
-            df_week["map"] = (df_week["diastolic"] + df_week["pulse_pressure"] / 3).round(1)
-
-    # Week bucket (start of week)
-    df_week["week"] = df_week["timestamp"].dt.to_period("W").apply(lambda p: p.start_time.date())
-
-    # Only summarize columns that actually exist
-    numeric_cols = [c for c in ["systolic", "diastolic", "map", "pulse_pressure"] if c in df_week.columns]
-    if not numeric_cols:
-        st.info("No numeric columns to summarize.")
-    else:
-        summary = df_week.groupby("week")[numeric_cols].agg(["count", "mean", "min", "max"])
-        summary.columns = ["_".join(col).strip() for col in summary.columns.values]
-        st.dataframe(summary, use_container_width=True)
-
-
 
 # =========================
 # Info
