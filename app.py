@@ -316,48 +316,69 @@ else:
     st.dataframe(show.head(25), use_container_width=True, hide_index=True)
 
   
-# =========================
-# Charts
-# =========================
+import matplotlib.dates as mdates
+
+# ---------- Visualizations ----------
 if not df.empty:
     st.subheader("Trends")
 
-    if "timestamp" in df.columns:
-        df_plot = df.copy().sort_values("timestamp")
-        df_plot.set_index("timestamp", inplace=True)
+    df_plot = df.copy().sort_values("timestamp")
+    df_plot["date"] = df_plot["timestamp"].dt.date
 
-        # 7-day rolling averages
-        for col in ["systolic", "diastolic"]:
-            if col in df_plot.columns:
-                df_plot[f"{col}_7d_avg"] = df_plot[col].rolling("7D").mean()
+    # Rolling means
+    df_plot.set_index("timestamp", inplace=True)
+    for col in ["systolic", "diastolic"]:
+        df_plot[f"{col}_7d_avg"] = df_plot[col].rolling("7D").mean()
 
-        st.markdown("**Systolic & Diastolic over time** (with 7-day rolling average)")
-        fig1, ax1 = plt.subplots()
-        if "systolic" in df_plot.columns:
-            ax1.plot(df_plot.index, df_plot["systolic"], label="Systolic")
-        if "diastolic" in df_plot.columns:
-            ax1.plot(df_plot.index, df_plot["diastolic"], label="Diastolic")
-        if "systolic_7d_avg" in df_plot.columns:
-            ax1.plot(df_plot.index, df_plot["systolic_7d_avg"], linestyle="--", label="Systolic (7d avg)")
-        if "diastolic_7d_avg" in df_plot.columns:
-            ax1.plot(df_plot.index, df_plot["diastolic_7d_avg"], linestyle="--", label="Diastolic (7d avg)")
-        ax1.set_xlabel("Date"); ax1.set_ylabel("mmHg"); ax1.legend()
-        st.pyplot(fig1)
+    # ---- Line chart: systolic/diastolic and 7-day averages ----
+    st.markdown("**Systolic & Diastolic over time** (with 7-day rolling average)")
+    fig1, ax1 = plt.subplots()
 
-        st.markdown("**Systolic vs Diastolic** (each point = a reading)")
-        fig2, ax2 = plt.subplots()
-        if "systolic" in df.columns and "diastolic" in df.columns:
-            ax2.scatter(df["systolic"], df["diastolic"])
-        ax2.set_xlabel("Systolic (mmHg)"); ax2.set_ylabel("Diastolic (mmHg)")
-        st.pyplot(fig2)
+    ax1.plot(df_plot.index, df_plot["systolic"], label="Systolic")
+    ax1.plot(df_plot.index, df_plot["diastolic"], label="Diastolic")
+    if df_plot["systolic_7d_avg"].notna().any() or df_plot["diastolic_7d_avg"].notna().any():
+        ax1.plot(df_plot.index, df_plot["systolic_7d_avg"], linestyle="--", label="Systolic (7d avg)")
+        ax1.plot(df_plot.index, df_plot["diastolic_7d_avg"], linestyle="--", label="Diastolic (7d avg)")
 
+    ax1.set_xlabel("Date")
+    ax1.set_ylabel("mmHg")
+    ax1.legend()
+
+    # Format the x-axis nicely
+    ax1.xaxis.set_major_locator(mdates.AutoDateLocator(minticks=5, maxticks=8))
+    ax1.xaxis.set_major_formatter(mdates.DateFormatter("%b %d"))
+    fig1.autofmt_xdate(rotation=45)
+
+    st.pyplot(fig1)
+
+    # ---- Scatter: systolic vs diastolic ----
+    st.markdown("**Systolic vs Diastolic** (each point = a reading)")
+    fig2, ax2 = plt.subplots()
+    ax2.scatter(df["systolic"], df["diastolic"])
+
+    ax2.set_xlabel("Systolic (mmHg)")
+    ax2.set_ylabel("Diastolic (mmHg)")
+
+    ax2.set_xlim(left=min(80, df["systolic"].min() - 5), right=max(180, df["systolic"].max() + 5))
+    ax2.set_ylim(bottom=min(50, df["diastolic"].min() - 5), top=max(120, df["diastolic"].max() + 5))
+
+    # Ensure scatter axis labels are clean
+    ax2.xaxis.set_major_locator(plt.MaxNLocator(6))
+    ax2.yaxis.set_major_locator(plt.MaxNLocator(6))
+
+    st.pyplot(fig2)
+
+    # ---- Weekly summary ----
     st.subheader("Weekly summary")
     df_week = df.copy()
-    if "timestamp" in df_week.columns:
-        df_week["week"] = df_week["timestamp"].dt.to_period("W").apply(lambda p: p.start_time.date())
-        summary = df_week.groupby("week")[["systolic","diastolic","map","pulse_pressure"]].agg(["count","mean","min","max"])
-        summary.columns = ['_'.join(c).strip() for c in summary.columns.values]
-        st.dataframe(summary, use_container_width=True)
+    df_week["week"] = df_week["timestamp"].dt.to_period("W").apply(lambda p: p.start_time.date())
+    summary = (
+        df_week.groupby("week")[["systolic", "diastolic", "map", "pulse_pressure"]]
+        .agg(["count", "mean", "min", "max"])
+    )
+    summary.columns = ['_'.join(col).strip() for col in summary.columns.values]
+    st.dataframe(summary, use_container_width=True)
+
 
 # =========================
 # Info
