@@ -287,7 +287,7 @@ with st.form("bp_form", clear_on_submit=True):
 import numpy as np
 
 # =========================
-# Table (color gradient version, dynamic range)
+# Table (fun version)
 # =========================
 st.subheader("Recent readings")
 if df.empty:
@@ -295,57 +295,27 @@ if df.empty:
 else:
     show = df.sort_values("timestamp", ascending=False).copy()
 
-    # Pretty timestamp
+    # Pretty timestamp: "Sun 8/10/25"  (month no leading zero; 2-digit year)
     show["When"] = show["timestamp"].apply(
         lambda x: f"{x.strftime('%a')} {x.month}/{x.day:02d}/{x.year%100:02d}"
     )
 
-    # Compact BP
+    # Compact BP and friendlier status
+    status_emoji = {
+        "Normal": "🟢",
+        "Elevated": "🟡",
+        "Hypertension Stage 1": "🟠",
+        "Hypertension Stage 2": "🔴",
+    }
     show["BP"] = show["systolic"].astype(int).astype(str) + "/" + show["diastolic"].astype(int).astype(str)
+    show["Status"] = show["category"].map(lambda c: f"{status_emoji.get(c, '⚪')} {c}")
     show["Notes"] = show["notes"].fillna("")
 
-    # % difference from target (average of sys/dia % differences)
-    def bp_percent_diff(row):
-        sys_diff = (row["systolic"] - 120) / 120
-        dia_diff = (row["diastolic"] - 80) / 80
-        return (sys_diff + dia_diff) / 2
+    # Choose columns & hide the index
+    show = show[["When", "BP", "Status", "Notes"]]
+    st.dataframe(show.head(25), use_container_width=True, hide_index=True)
 
-    diffs = show.apply(bp_percent_diff, axis=1)
-
-    # Normalize by max deviation for gradient scaling
-    max_dev = max(abs(diffs).max(), 0.0001)  # prevent div by zero
-    norm_diffs = diffs / max_dev  # now -1 to 1 range
-
-    # Map normalized diff → color
-    def color_from_diff(p):
-        # Clamp between -1 and 1
-        p = max(min(p, 1), -1)
-        if p >= 0:
-            # Green → Red
-            r = int(255 * p)
-            g = int(255 * (1 - p))
-            b = 0
-        else:
-            # Green → Blue
-            p = abs(p)
-            r = 0
-            g = int(255 * (1 - p))
-            b = int(255 * p)
-        return f"background-color: rgb({r},{g},{b}); color: white; font-weight: bold; text-align: center;"
-
-    # Build display table
-    table = show[["When", "BP", "Notes"]].reset_index(drop=True)
-
-    # Apply styles
-    styler = table.style.apply(
-        lambda col: [color_from_diff(norm_diffs.iloc[i]) if col.name == "BP" else "" for i in range(len(col))],
-        axis=0
-    )
-
-    st.dataframe(styler, use_container_width=True,
-                )
-
-
+  
 # =========================
 # Charts
 # =========================
